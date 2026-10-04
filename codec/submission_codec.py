@@ -29,7 +29,6 @@ class Gpt2mStepper:
     """onnx gpt2m with incremental KV-cache. reset() -> prefill(ids) -> step(token)..."""
     def __init__(self, onnx_path, providers=None):
         self.sess = ort.InferenceSession(onnx_path, providers=providers or ["CPUExecutionProvider"])
-        self.past = None
         self.reset()
 
     def reset(self):

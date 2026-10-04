@@ -1,6 +1,6 @@
 from .pipeline import Codec, CodecConfig
 from .cache import CachedModel
-from .sweep import sweep, codec_bits
+from .sweep import sweep
 
 def model_only_bits(tokens, dists, grid, vocab, codebook, context_frames=20):
     """Bits/token using the model alone: mixer keeps init weights [1,0,0] and we freeze

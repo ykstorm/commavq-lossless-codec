@@ -1,4 +1,3 @@
-import numpy as np
 from .pipeline import Codec, CodecConfig
 from .model_runtime import MockModel
 
@@ -9,10 +8,9 @@ def bits_per_token(tokens, vocab, grid, codebook, model=None):
     data = codec.compress(tokens)
     return len(data) * 8.0 / tokens.size
 
-def ablation(tokens, vocab, grid, codebook, model=None):
+def ablation(tokens, vocab, grid, codebook):
     """Measure bits/token as adaptive components are switched on.
     Disabling = freezing a predictor's mixer weight at 0 (still stepped for lockstep)."""
-    model = model or MockModel(vocab=vocab, seed=0)
     results = {}
     for name, use_rc, use_lms in [
         ("model_only", False, False),
