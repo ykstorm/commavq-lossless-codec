@@ -1,18 +1,15 @@
-"""Real gpt2m + arithmetic-coding submission codec (the actual compressor).
+"""gpt2m + arithmetic coding for one segment. This module ships in the submission zip.
 
-Unlike the measurement cache (teacher-forced, tokens known), a real DEcompressor
-cannot peek at the tokens it is recovering. So it must regenerate gpt2m's per-token
-distribution autoregressively from already-decoded tokens. We use onnx KV-cache:
-per frame, prefill the <=20-frame context window once, then step token-by-token.
+Unlike the measurement cache (teacher-forced, tokens known), the decompressor cannot see
+the tokens it is recovering, so it regenerates gpt2m's distributions autoregressively
+from already-decoded tokens: per frame, prefill the <=20-frame context window once
+through the onnx KV-cache, then step token by token.
 
-Losslessness: compress and decompress call the IDENTICAL stepping code on the IDENTICAL
-inputs, so the float16 logits -> float64 distribution are bit-identical both directions.
-The fused distribution is quantized to an integer frequency table (deterministic) before
-arithmetic coding.
+Compress and decompress run the same stepping code on the same inputs, so they get the
+same logits as long as onnxruntime is deterministic on that provider and hardware. Each
+distribution is quantized to an integer frequency table before coding.
 
-This is gpt2m-only (no fusion -- fusion was shown to hurt). It implements the
-leaderboard's 4.0 method correctly. Encoding the full dataset is a heavy GPU job;
-this module is validated end-to-end on a small sample locally.
+gpt2m only: the fusion experiments in this repo made it worse.
 """
 import numpy as np
 import onnxruntime as ort

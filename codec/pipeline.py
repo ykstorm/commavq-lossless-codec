@@ -12,7 +12,7 @@ class CodecConfig:
     vocab: int
     grid: int            # tokens per frame (128 in production; small in tests)
     context_frames: int  # how many past frames the model sees
-    # tunable hyperparameters (swept in Stage-0 harness; defaults are sane starts)
+    # hyperparameters swept by sweep.py; the defaults are starting points
     rc_alpha: float = 0.02
     mixer_lr: float = 0.01
     lms_mu: float = 0.01
@@ -31,7 +31,6 @@ class Codec:
         self.mixer = LogisticMixer(n_positions=config.grid, n_models=3, lr=config.mixer_lr)
 
     def _context(self, flat, t):
-        # last context_frames*grid tokens as the model's conditioning window
         lo = max(0, t - self.cfg.context_frames * self.cfg.grid)
         return flat[lo:t]
 

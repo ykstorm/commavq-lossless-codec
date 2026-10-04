@@ -1,15 +1,14 @@
-"""LoRA-finetune gpt2m on commaVQ and gate on held-out cross-entropy (Plan D).
+"""LoRA-finetune gpt2m on commaVQ and gate on held-out cross-entropy.
 
-Runs on a GPU box (AWS g5 / A10G). Self-contained: downloads the HF model + a data
-subset, LoRA-finetunes, then compares held-out bits/token of the finetuned model vs
-the frozen base. Prints a go/no-go verdict. Saves the adapter only if it helps.
+For a GPU box. Self-contained (no codec imports): downloads the HF model and a data
+subset, LoRA-finetunes, then compares held-out bits/token of the finetuned model with
+the frozen base and prints a ship / do-not-ship verdict. Saves the adapter only if it
+helps. The LoRA run reported in docs/findings.md used the peft-free variant in
+notebooks/commavq_lora_colab.ipynb.
 
-The gate question: does in-distribution LoRA lower gpt2m's cross-entropy enough to
-justify shipping the adapter? Decided on held-out frames the model never trained on.
-
-Usage (on g5):
+Usage:
   pip install torch transformers peft datasets
-  python train_lora.py --train-segments 8 --eval-segments 2 --steps 400 --rank 8
+  python codec/train_lora.py --train-segments 8 --eval-segments 2 --steps 400 --rank 8
 """
 import argparse, math, time
 import numpy as np

@@ -2,11 +2,13 @@
 
 The evaluator unzips and runs this with OUTPUT_DIR set. It reproduces gpt2m's per-token
 distributions autoregressively (onnx KV-cache) and arithmetic-decodes each segment back
-to its exact tokens. gpt2m.onnx is fetched from HuggingFace (free, doesn't count toward
-the score). The codec modules ship alongside (in ./codec).
+to its exact tokens. gpt2m.onnx comes from HuggingFace unless it sits next to this file;
+gpt2m is part of the commavq repo, which the challenge rules count as available, so it
+adds nothing to the zip. The codec modules ship alongside (in ./codec).
 
-DETERMINISM: must run gpt2m with the same execution provider/precision used at encode time
-(see docs/superpowers/SUBMISSION.md). Default CPU provider is the safe, portable choice.
+Determinism: gpt2m must run with the same execution provider and precision used at
+encode time (see docs/submission.md). This decodes on CPU, while submission_compress.py
+prefers CUDA when it is available.
 """
 import os, sys, struct
 from pathlib import Path
@@ -26,7 +28,7 @@ def _gpt2m_onnx():
     if local.exists():
         return str(local)
     from huggingface_hub import hf_hub_download
-    return hf_hub_download("commaai/commavq-gpt2m", "gpt2m.onnx")  # verify filename on HF
+    return hf_hub_download("commaai/commavq-gpt2m", "gpt2m.onnx")
 
 def main():
     onnx = _gpt2m_onnx()

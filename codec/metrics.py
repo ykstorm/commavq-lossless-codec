@@ -9,8 +9,11 @@ def bits_per_token(tokens, vocab, grid, codebook, model=None):
     return len(data) * 8.0 / tokens.size
 
 def ablation(tokens, vocab, grid, codebook):
-    """Measure bits/token as adaptive components are switched on.
-    Disabling = freezing a predictor's mixer weight at 0 (still stepped for lockstep)."""
+    """Bits/token for model only, +rc, and +rc+lms.
+
+    This does not isolate the components: the mixer weights it zeroes are already zero
+    at init and the mixer keeps adapting them, so all three variants score the same.
+    No reported result uses it."""
     results = {}
     for name, use_rc, use_lms in [
         ("model_only", False, False),
@@ -19,7 +22,6 @@ def ablation(tokens, vocab, grid, codebook):
     ]:
         codec = Codec(CodecConfig(vocab=vocab, grid=grid, context_frames=20),
                       model=MockModel(vocab=vocab, seed=0), codebook=codebook)
-        # zero (and freeze) the mixer weights of disabled models; lr already adapts the rest
         if not use_rc:
             codec.mixer.w[:, 2] = 0.0
         if not use_lms:

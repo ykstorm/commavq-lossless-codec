@@ -1,8 +1,8 @@
-"""Run the Stage-0 decision harness on the REAL gpt2m cache (Plan B gate).
+"""Compare tuned fusion against gpt2m alone on a real gpt2m distribution cache.
 
-Loads the cached gpt2m distributions + VQ codebook, measures model-only vs tuned
-fusion bits/token at the production setting (vocab=1024, grid=128), and reports the
-projected compression ratio vs the leaderboard's 4.0.
+Loads the cached gpt2m distributions and the VQ codebook, measures model-only and tuned
+fusion bits/token at the production setting (vocab=1024, grid=128), and prints the
+implied compression ratio next to the leaderboard's 4.0.
 
 Usage:
   python -m codec.run_real_decision --cache compression/codec/cache_real_300.npz
@@ -45,7 +45,7 @@ def main():
     best_cfg = ranked[0][0]
     print(f"best config (subset)  : {best_cfg}  (subset bits/tok {ranked[0][1]:.4f})", flush=True)
 
-    # prove lossless on REAL distributions with the chosen config (not just synthetic tests)
+    # check the round trip on real distributions with the chosen config, not just synthetic tests
     from .pipeline import Codec, CodecConfig
     from .cache import CachedModel
     cfg = CodecConfig(vocab=vocab, grid=grid, context_frames=20, **best_cfg)
@@ -54,7 +54,6 @@ def main():
     assert np.array_equal(rt, tokens), "REAL-DATA ROUND-TRIP NOT LOSSLESS"
     print(f"lossless round-trip   : OK ({len(blob)} bytes for {tokens.size} tokens)", flush=True)
 
-    # score on the FULL cache
     base = model_only_bits(tokens, dists, grid, vocab, codebook)
     best = codec_bits(tokens, dists, grid, vocab, codebook, **best_cfg)
     gain = base - best

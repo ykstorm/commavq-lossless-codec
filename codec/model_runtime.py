@@ -1,7 +1,7 @@
 import numpy as np
 
 class ModelRuntime:
-    """Interface for a global-prior model. Plan B implements this with gpt2m.
+    """Interface for a global-prior model (real gpt2m enters through cache.CachedModel).
     probs(context, pos) -> float64 distribution over `vocab` content codes (BOS excluded)."""
     def probs(self, context, pos):
         raise NotImplementedError

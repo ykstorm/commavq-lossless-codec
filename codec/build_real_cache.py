@@ -1,4 +1,4 @@
-"""Build a real gpt2m distribution cache from examples/tokens.npy (Plan B Stage-2).
+"""Build a real gpt2m distribution cache from commavq's examples/tokens.npy.
 
 One-time expensive step. Saves an .npz the GPU-free sweep/decision harness replays.
 

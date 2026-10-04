@@ -1,12 +1,12 @@
-"""Build the commaVQ submission: compress splits 0+1 with gpt2m+AC, package the zip.
+"""Build the commaVQ submission: compress splits 0+1 with gpt2m + AC and package the zip.
 
-Run on a GPU box (set providers=['CUDAExecutionProvider']). Maps the validated
-`submission_codec` over every segment, writes one compressed file per segment, copies
-the decompressor + codec modules, and zips. Mirrors the structure of the repo's
-baseline compress.py so `./compression/evaluate.sh` scores it.
+Maps `submission_codec` over every segment, writes one compressed file per segment,
+copies the decompressor and the codec modules it needs, and zips. Mirrors the layout of
+commavq's baseline compress.py so `./compression/evaluate.sh` can score it.
 
-This is a heavy full-dataset job (~768M tokens) — intended for the cloud GPU run, not
-the local 4GB machine.
+This is the full-dataset job (about 768M tokens) and has not been run. PROVIDERS prefers
+CUDA but the shipped decompress.py decodes on CPU, so check that pairing round-trips on a
+few segments first (see docs/submission.md).
 """
 import os, shutil, struct
 from pathlib import Path

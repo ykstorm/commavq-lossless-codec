@@ -1,4 +1,4 @@
-"""Real gpt2m distributions via the local ONNX export (Plan B Stage-2 backend).
+"""Real gpt2m distributions via the local ONNX export, for building measurement caches.
 
 Produces per-content-token distributions over the 1024 codebook indices, aligned
 with the codec's raster stream order (frame-by-frame, 128 tokens/frame). The BOS

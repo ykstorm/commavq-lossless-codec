@@ -2,8 +2,8 @@ import numpy as np
 from .model_runtime import ModelRuntime
 
 def precompute_distributions(model, tokens, grid, context_frames, vocab):
-    """Run `model` over the token stream once, caching each per-token distribution.
-    This is the expensive step (real gpt2m in Plan B); cache enables GPU-free sweeps."""
+    """Run `model` over the token stream once, caching each per-token distribution,
+    so sweeps can replay it without running the model again."""
     flat = tokens.reshape(-1).astype(np.int64)
     out = np.empty((flat.shape[0], vocab), dtype=np.float64)
     for t in range(flat.shape[0]):
