@@ -2,11 +2,8 @@
 are absent (keeps the core suite GPU/model-free and fast). Runs only 2 frames."""
 import numpy as np
 import pytest
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parents[3]
-ONNX = HERE / "gpt2m" / "gpt2m.onnx"
-TOKENS = HERE / "examples" / "tokens.npy"
+from codec.paths import EXAMPLE_TOKENS as TOKENS, GPT2M_ONNX as ONNX
 
 ort = pytest.importorskip("onnxruntime")
 pytestmark = pytest.mark.skipif(not (ONNX.exists() and TOKENS.exists()),

@@ -13,11 +13,13 @@ Usage:
 import argparse, math, time
 import numpy as np
 
+# Copies of codec.submission_codec values, so this runs on a GPU box without onnxruntime.
 BOS = 1024
 TPF = 129          # tokens per frame incl BOS
 GRID = 128
 BLOCK_FRAMES = 20  # gpt2m context = 20 frames
 BLOCK = BLOCK_FRAMES * TPF  # 2580
+RAW_BITS = 10      # bits per raw token; a ratio is RAW_BITS / bits-per-token
 
 def log(*a): print(*a, flush=True)
 
@@ -84,7 +86,7 @@ def main():
 
     base = GPT2LMHeadModel.from_pretrained(args.model).to(device)
     base_bits = content_bits(base, eval_blocks, device, args.batch)
-    log(f"BASE held-out bits/token: {base_bits:.4f}  (ratio {10/base_bits:.3f})")
+    log(f"BASE held-out bits/token: {base_bits:.4f}  (ratio {RAW_BITS/base_bits:.3f})")
 
     lcfg = LoraConfig(r=args.rank, lora_alpha=2 * args.rank, lora_dropout=0.0,
                       target_modules=["c_attn"], task_type="CAUSAL_LM")
@@ -110,8 +112,8 @@ def main():
     adapter_mb = trainable * 2 / 1e6   # fp16 adapter
     gain = base_bits - ft_bits
     log("=== LoRA GATE (held-out) ===")
-    log(f"base bits/token     : {base_bits:.4f}  (ratio {10/base_bits:.3f})")
-    log(f"finetuned bits/token: {ft_bits:.4f}  (ratio {10/ft_bits:.3f})")
+    log(f"base bits/token     : {base_bits:.4f}  (ratio {RAW_BITS/base_bits:.3f})")
+    log(f"finetuned bits/token: {ft_bits:.4f}  (ratio {RAW_BITS/ft_bits:.3f})")
     log(f"gain                : {gain:.4f} bits/token ({100*gain/base_bits:.2f}%)")
     log(f"adapter (~fp16)     : {adapter_mb:.2f} MB")
     # break-even over full dataset: bits saved across 768M tokens vs adapter bytes

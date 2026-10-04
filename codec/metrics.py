@@ -1,9 +1,9 @@
-from .pipeline import Codec, CodecConfig
+from .pipeline import Codec, CodecConfig, DEFAULT_CONTEXT_FRAMES
 from .model_runtime import MockModel
 
 def bits_per_token(tokens, vocab, grid, codebook, model=None):
     model = model or MockModel(vocab=vocab, seed=0)
-    codec = Codec(CodecConfig(vocab=vocab, grid=grid, context_frames=20),
+    codec = Codec(CodecConfig(vocab=vocab, grid=grid, context_frames=DEFAULT_CONTEXT_FRAMES),
                   model=model, codebook=codebook)
     data = codec.compress(tokens)
     return len(data) * 8.0 / tokens.size
@@ -20,7 +20,7 @@ def ablation(tokens, vocab, grid, codebook):
         ("model+rc", True, False),
         ("model+rc+lms", True, True),
     ]:
-        codec = Codec(CodecConfig(vocab=vocab, grid=grid, context_frames=20),
+        codec = Codec(CodecConfig(vocab=vocab, grid=grid, context_frames=DEFAULT_CONTEXT_FRAMES),
                       model=MockModel(vocab=vocab, seed=0), codebook=codebook)
         if not use_rc:
             codec.mixer.w[:, 2] = 0.0

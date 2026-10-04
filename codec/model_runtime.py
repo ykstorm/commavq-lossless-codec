@@ -9,15 +9,17 @@ class ModelRuntime:
 class MockModel(ModelRuntime):
     """Deterministic stand-in: biases toward repeating the last context token, plus a
     fixed per-position skew. Pure function of (context tail, pos) -> reproducible at decode."""
+    N_POSITIONS = 128  # one bias row per position of a production frame; pos wraps for others
+
     def __init__(self, vocab, seed=0, repeat_weight=6.0):
         self.vocab = int(vocab)
         self.repeat_weight = float(repeat_weight)
         rs = np.random.default_rng(seed)
         # fixed per-position bias table (deterministic, not learned)
-        self.bias = rs.standard_normal((128, self.vocab)) * 0.3
+        self.bias = rs.standard_normal((self.N_POSITIONS, self.vocab)) * 0.3
 
     def probs(self, context, pos):
-        logits = self.bias[pos % 128].copy()
+        logits = self.bias[pos % self.N_POSITIONS].copy()
         if len(context) > 0:
             logits[context[-1] % self.vocab] += self.repeat_weight
         logits -= logits.max()

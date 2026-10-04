@@ -12,24 +12,20 @@ matches feeding a standalone 20-frame sequence to the learned absolute-position 
 import numpy as np
 import onnxruntime as ort
 
-BOS = 1024
-TOKENS_PER_FRAME = 129   # 1 BOS + 128 content
-GRID = 128
-N_LAYERS = 24
-N_HEAD = 16
-HEAD_DIM = 64
+from .submission_codec import BOS, CONTEXT_FRAMES, GRID, VOCAB, empty_past
+
+TOKENS_PER_FRAME = GRID + 1   # 1 BOS + 128 content
 
 class Gpt2mOnnx:
-    def __init__(self, onnx_path, context_frames=20, providers=None):
+    def __init__(self, onnx_path, context_frames=CONTEXT_FRAMES, providers=None):
         self.context_frames = int(context_frames)
         providers = providers or ["CPUExecutionProvider"]
         self.sess = ort.InferenceSession(onnx_path, providers=providers)
-        self._empty_past = {f"past_{i}": np.zeros((2, 1, N_HEAD, 0, HEAD_DIM), dtype=np.float16)
-                            for i in range(N_LAYERS)}
+        self._empty_past = empty_past()
 
     def _frame_logits(self, window_ids):
         """window_ids: 1-D int array of BOS-prefixed tokens, target frame is the last
-        129. Returns logits (L, 1025) float32."""
+        129. Returns logits (L, 1025) float64."""
         ids = window_ids.astype(np.int32)[None, :]
         feeds = {"input_ids": ids, **self._empty_past}
         logits = self.sess.run(["logits"], feeds)[0]      # (1, L, 1025) float16
@@ -53,14 +49,14 @@ class Gpt2mOnnx:
         p /= p.sum(axis=1, keepdims=True)
         return p
 
-def precompute_gpt2m_distributions(onnx_path, tokens, n_frames=None, context_frames=20,
+def precompute_gpt2m_distributions(onnx_path, tokens, n_frames=None, context_frames=CONTEXT_FRAMES,
                                    providers=None, progress=None):
     """tokens: (F, 128) int array (raster content tokens, NO BOS).
     Returns (n_frames*128, 1024) float64 distributions in codec stream order."""
     tokens = np.asarray(tokens).reshape(tokens.shape[0], GRID).astype(np.int64)
     F = tokens.shape[0] if n_frames is None else min(n_frames, tokens.shape[0])
     model = Gpt2mOnnx(onnx_path, context_frames=context_frames, providers=providers)
-    out = np.empty((F * GRID, 1024), dtype=np.float64)
+    out = np.empty((F * GRID, VOCAB), dtype=np.float64)
     for f in range(F):
         lo = max(0, f - (context_frames - 1))
         window = [tokens[g] for g in range(lo, f + 1)]

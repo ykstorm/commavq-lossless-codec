@@ -18,10 +18,9 @@ from datasets import load_dataset
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))                 # make ./codec importable
-from codec.submission_codec import Gpt2mStepper, decompress_segment
+from codec.submission_codec import DATASET, SPLIT_FILES, Gpt2mStepper, decompress_segment
 
 OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", HERE / "decompressed"))
-SPLIT_FILES = ["data-0000.tar.gz", "data-0001.tar.gz"]
 
 def _gpt2m_onnx():
     local = HERE / "gpt2m.onnx"
@@ -33,7 +32,7 @@ def _gpt2m_onnx():
 def main():
     onnx = _gpt2m_onnx()
     stepper = Gpt2mStepper(onnx, providers=["CPUExecutionProvider"])
-    ds = load_dataset("commaai/commavq", num_proc=multiprocessing.cpu_count(),
+    ds = load_dataset(DATASET, num_proc=multiprocessing.cpu_count(),
                       data_files={"train": SPLIT_FILES})["train"]
     for ex in ds:
         name = ex["json"]["file_name"]

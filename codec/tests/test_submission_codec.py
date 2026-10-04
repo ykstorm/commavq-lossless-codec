@@ -5,11 +5,8 @@ Runs a tiny round-trip. Frames >= 19 (the full 2580-token window) are too slow f
 suite at roughly 30 s/frame on CPU and have not been round-tripped (docs/findings.md 4.4)."""
 import numpy as np
 import pytest
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parents[3]
-ONNX = HERE / "gpt2m" / "gpt2m.onnx"
-TOKENS = HERE / "examples" / "tokens.npy"
+from codec.paths import EXAMPLE_TOKENS as TOKENS, GPT2M_ONNX as ONNX
 
 pytest.importorskip("onnxruntime")
 pytestmark = pytest.mark.skipif(not (ONNX.exists() and TOKENS.exists()),

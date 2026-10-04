@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 import numpy as np
 
-from .quantize import quantize
+from .quantize import PRECISION_BITS, quantize
 from .range_coder import RangeEncoder, RangeDecoder
 from .rc_prior import RCPrior
 from .lms_predictor import LMSPredictor
 from .mixer import LogisticMixer
+
+DEFAULT_CONTEXT_FRAMES = 20  # gpt2m's window; only the mock and synthetic models read context
 
 @dataclass
 class CodecConfig:
@@ -18,7 +20,7 @@ class CodecConfig:
     lms_mu: float = 0.01
     lms_tau: float = 1.0
     lms_taps: int = 3
-    precision_bits: int = 16
+    precision_bits: int = PRECISION_BITS
 
 class Codec:
     """Lossless adaptive-fusion codec for one token example of shape (n_frames, grid).

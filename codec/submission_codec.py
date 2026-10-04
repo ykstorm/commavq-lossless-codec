@@ -14,13 +14,24 @@ gpt2m only: the fusion experiments in this repo made it worse.
 import numpy as np
 import onnxruntime as ort
 
-from .quantize import quantize
+from .quantize import PRECISION_BITS, quantize
 from .range_coder import RangeEncoder, RangeDecoder
 
-BOS = 1024
-GRID = 128
-CTX_FRAMES = 19          # previous frames; +current frame's BOS+128 = 20 frames = 2580 tokens
+# gpt2m geometry, also used by gpt2m_onnx.py; it lives here because this module ships in the zip.
+VOCAB = 1024             # content codes 0..1023
+BOS = 1024               # frame separator, the 1025th symbol gpt2m predicts
+GRID = 128               # tokens per frame (8 x 16, raster order)
+CONTEXT_FRAMES = 20      # gpt2m block_size: 20 frames of BOS + 128 tokens = 2580
+CTX_FRAMES = CONTEXT_FRAMES - 1   # previous frames; the current frame's BOS + 128 complete the window
 N_LAYERS, N_HEAD, HEAD_DIM = 24, 16, 64
+
+DATASET = "commaai/commavq"
+SPLIT_FILES = ["data-0000.tar.gz", "data-0001.tar.gz"]  # challenge splits 0+1; encode and decode must agree
+
+def empty_past():
+    """KV cache with no past positions, for a fresh forward pass."""
+    return {f"past_{i}": np.zeros((2, 1, N_HEAD, 0, HEAD_DIM), dtype=np.float16)
+            for i in range(N_LAYERS)}
 
 class Gpt2mStepper:
     """onnx gpt2m with incremental KV-cache. reset() -> prefill(ids) -> step(token)..."""
@@ -29,8 +40,7 @@ class Gpt2mStepper:
         self.reset()
 
     def reset(self):
-        self.past = {f"past_{i}": np.zeros((2, 1, N_HEAD, 0, HEAD_DIM), dtype=np.float16)
-                     for i in range(N_LAYERS)}
+        self.past = empty_past()
 
     def _run(self, ids):
         feeds = {"input_ids": np.array([ids], dtype=np.int32), **self.past}
@@ -63,7 +73,7 @@ def _frame_prefill_ids(tokens, f):
 def _cum(freqs, sym):
     return int(freqs[:sym].sum()), int(freqs[sym]), int(freqs.sum())
 
-def compress_segment(stepper, tokens, precision_bits=16):
+def compress_segment(stepper, tokens, precision_bits=PRECISION_BITS):
     tokens = np.asarray(tokens).reshape(-1, GRID).astype(np.int64)
     F = tokens.shape[0]
     enc = RangeEncoder()
@@ -78,7 +88,7 @@ def compress_segment(stepper, tokens, precision_bits=16):
                 dist = stepper.step(sym)
     return enc.finish()
 
-def decompress_segment(stepper, data, n_frames, precision_bits=16):
+def decompress_segment(stepper, data, n_frames, precision_bits=PRECISION_BITS):
     dec = RangeDecoder(data)
     tokens = np.zeros((n_frames, GRID), dtype=np.int64)
     for f in range(n_frames):
