@@ -1,106 +1,91 @@
-# commaVQ Lossless Compression — codec + negative-results study
+# commaVQ lossless codec
 
-![tests](https://img.shields.io/badge/tests-47%20passing-brightgreen)
-![python](https://img.shields.io/badge/python-3.12-blue)
-![license](https://img.shields.io/badge/license-MIT-green)
-![cloud spend](https://img.shields.io/badge/cloud%20spend-%240-blueviolet)
+[![tests](https://github.com/ykstorm/commavq-lossless-codec/actions/workflows/tests.yml/badge.svg)](https://github.com/ykstorm/commavq-lossless-codec/actions/workflows/tests.yml)
 
-Lossless compression of [comma.ai's commaVQ](https://github.com/commaai/commavq) driving-video tokens. A **provably-lossless `gpt2m` + arithmetic-coding codec** that reaches **compression ratio 4.04** — matching the challenge's #1 method — plus a **rigorous study showing that two intuitively-promising improvements add nothing on top of it.**
+Lossless compression of the driving-video tokens in comma.ai's [commaVQ](https://github.com/commaai/commavq) challenge. The codec takes each token's next-token distribution from comma's pretrained `gpt2m` world model and codes the token with a range coder. The repo also holds two attempts to improve on plain gpt2m + arithmetic coding, an adaptive-filter fusion and a LoRA finetune. Neither helped.
 
-> **The honest result:** the pretrained `gpt2m` world model with a correct arithmetic coder is already at the *entropy ceiling* for this data. I prove it two independent ways (classical adaptive-filter context-mixing, and in-distribution LoRA finetuning) — both fail, both rigorously measured on held-out data, and independently corroborated against other public solutions. The working engineering and the truthfully-reported negatives are the contribution.
+## The task
 
----
-
-## Result
-
-| Method | bits/token | ratio | vs. leaderboard* |
-|---|---:|---:|---|
-| lzma baseline (comma's example) | — | 1.6 | rank 16 |
-| **gpt2m + arithmetic coding (this codec)** | **2.47** | **4.04** | matches rank 1–2 |
-
-<sub>\* 16-entry leaderboard. Validated lossless on sample segments through the full 2580-token context window. The original challenge closed July 2024 — this is a faithful, independently-verified reproduction + study, not an official leaderboard entry.</sub>
-
-The codec is **gpt2m-only on purpose**: the experiments below show that adding anything on top makes it *worse*.
-
----
-
-## Why this is worth a look
-
-- **Provably-lossless systems engineering** — a range coder + model whose encoder/decoder stay bit-identical in lockstep; tested to be lossless across *every* hyperparameter configuration, not just the happy path.
-- **Scientific honesty** — two improvement ideas were built and *disproven* on held-out data, then cross-checked against the field. Most write-ups bury negatives; this one leads with them.
-- **Cost discipline** — every result obtained locally + on free Colab, **$0 of cloud spend**. The "prove the gain before you pay for compute" workflow is what surfaced both negatives cheaply.
-
----
-
-## The finding: gpt2m + AC is at the ceiling
-
-Two improvements, each built, run, and measured on **held-out** data. Both fail.
-
-**1. Adaptive-filter context mixing (a classic signal-processing angle).**
-Fuse gpt2m's distribution with classical online **adaptive filters** — a Widrow-Hoff **LMS** predictor over the VQ codebook-embedding space + a per-position **RC leaky-integrator** prior — via a position-keyed logistic mixer (itself LMS in the logit domain). Framing: *context mixing is adaptive filtering.*
-→ Every configuration is **worse** than gpt2m alone (best fusion 2.33 vs 2.31 bits/token; −1.5% tuned). The adaptive predictors are redundant with gpt2m's attention; the mixer's online adaptation only injects variance that costs bits.
-
-**2. In-distribution LoRA finetuning.**
-LoRA-finetune gpt2m on the target data itself (legitimate two-part coding — ship the small adapter). Serious run: 600 steps, 40 segments, rank 16, all Conv1D layers.
-→ Held-out gain **+0.04%** (noise); training loss never drops. gpt2m was pretrained on **3,000,000 minutes** of this distribution — no residual signal for a LoRA to capture.
-
-**Independent corroboration.** A separate public solution tested the *same two levers* (context-mixing, test-time training) plus six more — all ≤0% — concluding *"ties the world record; 5.0 is unreachable with the free model."* Two efforts, same wall. Exceeding 4.0 needs a fundamentally better world model, not better coding of gpt2m's outputs. Full detail + numbers in [`docs/findings.md`](docs/findings.md).
-
----
+The challenge data is the first two splits of commaVQ: 5,000 one-minute segments, each 1200 frames of 8 x 16 tokens from a 1024-entry VQ codebook, about 768M tokens in all. The score is the raw size at 10 bits per token divided by the size of a zip holding the compressed data and a `decompress.py` that must restore every token exactly ([compression/README.md](https://github.com/commaai/commavq/blob/master/compression/README.md), [evaluate.py](https://github.com/commaai/commavq/blob/master/compression/evaluate.py)). The rules count the commavq repo and PyPI as available, and gpt2m is part of the commavq repo, so its weights do not go in the zip.
 
 ## How it works
 
-```
-            ┌──────────────────────────────────────────────┐
- tokens ───▶│  gpt2m (onnx, KV-cache)  ──▶ P(next | context)│
-            └───────────────┬──────────────────────────────┘
-                            │  drop BOS slot, renormalise
-                            ▼
-            ┌──────────────────────────────────────────────┐
-            │  quantize → integer frequency table (exact)   │
-            └───────────────┬──────────────────────────────┘
-                            ▼
-            ┌──────────────────────────────────────────────┐
-            │  Subbotin range coder  ◀── lockstep ──▶ decode│  lossless
-            └──────────────────────────────────────────────┘
-   (the fusion experiment adds LMS + RC predictors + a mixer here — and is shown to hurt)
-```
+1. gpt2m reads each frame as a BOS token followed by the frame's 128 tokens in raster order, with a context of 20 frames (2580 tokens).
+2. For each token, gpt2m gives a distribution over 1025 symbols. The BOS slot is dropped and the rest renormalised.
+3. `quantize.py` turns that distribution into integer frequencies that sum to 2^16, each at least 1. Both sides code against this integer table, never the floats.
+4. `range_coder.py`, a carryless range coder in Subbotin's style, codes the true token under that table.
+5. To decode, `submission_codec.py` rebuilds each distribution from tokens it has already decoded. For each frame it prefills up to 19 previous frames through the onnx KV-cache, then steps one token at a time. Compression runs the same code on the same inputs, so both sides see the same tables as long as onnxruntime returns identical logits on that provider and hardware.
 
-Decompression regenerates each distribution **autoregressively** from already-decoded tokens (no peeking) via the onnx KV-cache, so it's bit-identical to compression → exact reconstruction.
+## Results
 
-```
-codec/
-  quantize.py          float dist → integer frequency table (the lossless linchpin)
-  range_coder.py       Subbotin carryless range coder
-  gpt2m_onnx.py        real gpt2m distributions (sliding 20-frame windows)
-  submission_codec.py  autoregressive KV-cache decoder (the real lossless compressor)
-  pipeline.py          adaptive-fusion codec (lockstep encode/decode)
-  rc_prior.py / lms_predictor.py / mixer.py   the (disproven) adaptive-filter stack
-  sweep.py / decision.py / cache.py           GPU-free tuning on cached distributions
-```
+| Measurement | Data | bits/token | ratio |
+|---|---|---:|---:|
+| gpt2m + range coder (`submission_codec.py`) | 22 frames (2,816 tokens) of one clip | 2.474 | 4.04 |
+| gpt2m cross-entropy, no coder | 4 held-out segments, non-overlapping 20-frame blocks | 2.92 | 3.43 |
 
----
+The 4.04 comes from compressing a single 22-frame sample to 871 bytes ([docs/findings.md](docs/findings.md), section 4.4). It is not a full-dataset result: a run over all 5,000 segments was not performed, and the figure leaves out the zip container and the shipped `decompress.py`. The other gpt2m measurements in findings.md (section 2.2) range from 2.08 to 2.24 bits/token on commavq's example clip to 2.92 on four held-out segments, measured with different context and windowing, so a 22-frame sample says little about the full-set score.
+
+A lossless round trip was confirmed on 6 frames. The 22-frame sample, which crosses the point where the context fills to 20 frames, compressed without error, but its decompression ran out of memory on the local machine before finishing. A round trip past that boundary has not been confirmed.
+
+For reference, the top score in the leaderboard table of the [commavq README](https://github.com/commaai/commavq#readme) is 4.0, held by two entries listed as "arithmetic coding with commavq-gpt2m", the same method as this codec; the lzma baseline scores 1.6 (table checked 2026-10-04). Those are full-dataset scores and the 4.04 here is one short sample, so the comparison is indicative only. This repo is not a leaderboard entry.
+
+## What did not work
+
+Both experiments, with all their numbers, are in [docs/findings.md](docs/findings.md).
+
+Adaptive-filter fusion. gpt2m's distribution was mixed with two online predictors: a normalised LMS predictor in the VQ codebook's embedding space and a per-position leaky-integrator frequency prior, combined by a logistic mixer with weights per grid position. On a 60-frame gpt2m cache of the example clip, built with a 10-frame context, gpt2m alone scored 2.3146 bits/token. Every fusion setting in the sweep did worse. The best scored 2.3292, and the setting tuned on a leading subset scored 2.3500, 1.5% worse than gpt2m alone.
+
+In-distribution LoRA. LoRA at rank 16 on every Conv1D layer of gpt2m, trained for 600 steps on 40 segments and scored on 4 held-out segments ([notebook](notebooks/commavq_lora_colab.ipynb)). The base model scored 2.9194 bits/token and the finetuned one 2.9181, a 0.04% gain, while the training loss stayed flat near 2.0. At that gain the 12.6 MB adapter would cost far more bytes than it saves. A likely reason is that gpt2m was trained on 3,000,000 minutes of driving video ([commavq README](https://github.com/commaai/commavq#readme)), so an adapter trained on a few more segments of the same kind of footage has little left to learn.
+
+Another public gpt2m + arithmetic coding codec, [meetr1912/commavq-neural-compression](https://github.com/meetr1912/commavq-neural-compression), reports 2.415 bits/token on 30 segments (about 4.1 by its own estimate) and says eight further levers it measured, including context mixing and test-time training, gave no gain. Those are related to the experiments here, not the same.
 
 ## Run it
 
 ```bash
 pip install -r requirements.txt
-python -m pytest codec/tests -q     # 47 pass; model/onnx tests auto-skip without gpt2m
+python -m pytest codec/tests -q
 ```
 
-The core codec is pure numpy and fully testable with no model or GPU. Real-gpt2m and full-codec tests opt in when `gpt2m.onnx` is present.
+The fusion codec, quantizer and range coder are numpy only, and their tests need no model. Three tests also need `gpt2m.onnx` and commavq's `examples/tokens.npy`, and skip when those are missing.
 
----
+The scripts that use the real model read `gpt2m/` and `examples/` from a commavq checkout, with this repo's `codec/` folder at `<commavq>/compression/codec` (defaults in `codec/paths.py`). Run them from the folder that contains `codec/`:
 
-## Map
-- [`docs/findings.md`](docs/findings.md) — full results, all numbers, competitive landscape.
-- [`docs/design.md`](docs/design.md) — the design spec.
-- [`docs/submission.md`](docs/submission.md) — GPU + full-run path.
-- [`notebooks/commavq_lora_colab.ipynb`](notebooks/commavq_lora_colab.ipynb) — the LoRA gate (manual LoRA, no `peft` dependency).
+```bash
+python -m codec.extract_codebook                # gpt2m/decoder.onnx -> codec/codebook.npy (needs the onnx package)
+python -m codec.build_real_cache --frames 300   # examples/tokens.npy -> codec/cache_real_300.npz
+python -m codec.run_real_decision               # fusion against gpt2m alone on that cache
+```
 
----
+`build_real_cache` and `run_real_decision` also take explicit paths as flags. Building the submission zip needs `datasets` and a GPU-sized run; see [docs/submission.md](docs/submission.md).
 
-## Tech
-`Python` · `numpy` · `onnxruntime` · arithmetic / range coding · transformer LMs (`gpt2m`) · LoRA · adaptive filters (LMS/NLMS, RC) · `pytest`
+## Layout
 
-*An applied-ML / signal-processing portfolio piece — working lossless engineering plus rigorous, honestly-reported negative results.*
+```
+codec/
+  quantize.py              float distribution -> integer frequency table
+  range_coder.py           carryless range coder
+  submission_codec.py      gpt2m + range coder with KV-cache decode (ships in the zip)
+  decompress.py            the decompressor that ships in the zip
+  submission_compress.py   builds the zip (the full run has not been done)
+  gpt2m_onnx.py            teacher-forced gpt2m distributions, for measurement
+  build_real_cache.py      saves those distributions to an .npz
+  extract_codebook.py      pulls the VQ codebook out of decoder.onnx
+  pipeline.py              fusion codec, encoder and decoder in lockstep
+  lms_predictor.py, rc_prior.py, mixer.py    the fusion components
+  cache.py, sweep.py, decision.py, metrics.py   replay a cache and sweep fusion settings
+  run_real_decision.py     fusion against gpt2m alone on a real cache
+  model_runtime.py, synthetic.py   mock and synthetic models for the tests
+  paths.py                 default file locations
+  train_lora.py            peft LoRA script for a GPU box
+  tests/
+docs/
+  findings.md              results, numbers, other public solutions
+  design.md                the design written before the experiments
+  submission.md            GPU and submission notes
+notebooks/
+  commavq_lora_colab.ipynb   the LoRA run reported above
+```
+
+## License
+
+MIT, see [LICENSE](LICENSE).
