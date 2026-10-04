@@ -6,17 +6,16 @@ initializer `model.quantize._embedding.weight` in gpt2m/decoder.onnx.
 Usage:
   python -m codec.extract_codebook
 """
-from pathlib import Path
 import numpy as np
+from .paths import CODEBOOK, GPT2M_DECODER_ONNX
 
-HERE = Path(__file__).resolve().parents[2]
 EMB_NAME = "model.quantize._embedding.weight"
 
 def extract(decoder_onnx=None, out=None):
     import onnx
     from onnx import numpy_helper
-    decoder_onnx = decoder_onnx or str(HERE / "gpt2m" / "decoder.onnx")
-    out = out or str(HERE / "compression" / "codec" / "codebook.npy")
+    decoder_onnx = decoder_onnx or str(GPT2M_DECODER_ONNX)
+    out = out or str(CODEBOOK)
     m = onnx.load(decoder_onnx)
     for init in m.graph.initializer:
         if init.name == EMB_NAME:

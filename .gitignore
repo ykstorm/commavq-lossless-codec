@@ -6,3 +6,5 @@ __pycache__/
 *.pem
 run.log
 .instance_id
+submission_out/
+commavq_submission.zip

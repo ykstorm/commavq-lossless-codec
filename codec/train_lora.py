@@ -1,24 +1,25 @@
-"""LoRA-finetune gpt2m on commaVQ and gate on held-out cross-entropy (Plan D).
+"""LoRA-finetune gpt2m on commaVQ and gate on held-out cross-entropy.
 
-Runs on a GPU box (AWS g5 / A10G). Self-contained: downloads the HF model + a data
-subset, LoRA-finetunes, then compares held-out bits/token of the finetuned model vs
-the frozen base. Prints a go/no-go verdict. Saves the adapter only if it helps.
+For a GPU box. Self-contained (no codec imports): downloads the HF model and a data
+subset, LoRA-finetunes, then compares held-out bits/token of the finetuned model with
+the frozen base and prints a ship / do-not-ship verdict. Saves the adapter only if it
+helps. The LoRA run reported in docs/findings.md used the peft-free variant in
+notebooks/commavq_lora_colab.ipynb.
 
-The gate question: does in-distribution LoRA lower gpt2m's cross-entropy enough to
-justify shipping the adapter? Decided on held-out frames the model never trained on.
-
-Usage (on g5):
+Usage:
   pip install torch transformers peft datasets
-  python train_lora.py --train-segments 8 --eval-segments 2 --steps 400 --rank 8
+  python codec/train_lora.py --train-segments 8 --eval-segments 2 --steps 400 --rank 8
 """
 import argparse, math, time
 import numpy as np
 
+# Copies of codec.submission_codec values, so this runs on a GPU box without onnxruntime.
 BOS = 1024
 TPF = 129          # tokens per frame incl BOS
 GRID = 128
 BLOCK_FRAMES = 20  # gpt2m context = 20 frames
 BLOCK = BLOCK_FRAMES * TPF  # 2580
+RAW_BITS = 10      # bits per raw token; a ratio is RAW_BITS / bits-per-token
 
 def log(*a): print(*a, flush=True)
 
@@ -85,7 +86,7 @@ def main():
 
     base = GPT2LMHeadModel.from_pretrained(args.model).to(device)
     base_bits = content_bits(base, eval_blocks, device, args.batch)
-    log(f"BASE held-out bits/token: {base_bits:.4f}  (ratio {10/base_bits:.3f})")
+    log(f"BASE held-out bits/token: {base_bits:.4f}  (ratio {RAW_BITS/base_bits:.3f})")
 
     lcfg = LoraConfig(r=args.rank, lora_alpha=2 * args.rank, lora_dropout=0.0,
                       target_modules=["c_attn"], task_type="CAUSAL_LM")
@@ -111,8 +112,8 @@ def main():
     adapter_mb = trainable * 2 / 1e6   # fp16 adapter
     gain = base_bits - ft_bits
     log("=== LoRA GATE (held-out) ===")
-    log(f"base bits/token     : {base_bits:.4f}  (ratio {10/base_bits:.3f})")
-    log(f"finetuned bits/token: {ft_bits:.4f}  (ratio {10/ft_bits:.3f})")
+    log(f"base bits/token     : {base_bits:.4f}  (ratio {RAW_BITS/base_bits:.3f})")
+    log(f"finetuned bits/token: {ft_bits:.4f}  (ratio {RAW_BITS/ft_bits:.3f})")
     log(f"gain                : {gain:.4f} bits/token ({100*gain/base_bits:.2f}%)")
     log(f"adapter (~fp16)     : {adapter_mb:.2f} MB")
     # break-even over full dataset: bits saved across 768M tokens vs adapter bytes

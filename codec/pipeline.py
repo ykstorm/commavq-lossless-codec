@@ -1,24 +1,26 @@
 from dataclasses import dataclass
 import numpy as np
 
-from .quantize import quantize
+from .quantize import PRECISION_BITS, quantize
 from .range_coder import RangeEncoder, RangeDecoder
 from .rc_prior import RCPrior
 from .lms_predictor import LMSPredictor
 from .mixer import LogisticMixer
+
+DEFAULT_CONTEXT_FRAMES = 20  # gpt2m's window; only the mock and synthetic models read context
 
 @dataclass
 class CodecConfig:
     vocab: int
     grid: int            # tokens per frame (128 in production; small in tests)
     context_frames: int  # how many past frames the model sees
-    # tunable hyperparameters (swept in Stage-0 harness; defaults are sane starts)
+    # hyperparameters swept by sweep.py; the defaults are starting points
     rc_alpha: float = 0.02
     mixer_lr: float = 0.01
     lms_mu: float = 0.01
     lms_tau: float = 1.0
     lms_taps: int = 3
-    precision_bits: int = 16
+    precision_bits: int = PRECISION_BITS
 
 class Codec:
     """Lossless adaptive-fusion codec for one token example of shape (n_frames, grid).
@@ -31,7 +33,6 @@ class Codec:
         self.mixer = LogisticMixer(n_positions=config.grid, n_models=3, lr=config.mixer_lr)
 
     def _context(self, flat, t):
-        # last context_frames*grid tokens as the model's conditioning window
         lo = max(0, t - self.cfg.context_frames * self.cfg.grid)
         return flat[lo:t]
 

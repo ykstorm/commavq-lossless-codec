@@ -1,15 +1,12 @@
 """Guarded end-to-end test for the real gpt2m+AC submission codec.
 
 Skips when gpt2m.onnx / onnxruntime are absent (keeps the core suite fast/model-free).
-Runs a tiny round-trip; full validation incl. the frame>=19 context boundary is done
-separately (it is slow: ~30s/frame on CPU)."""
+Runs a tiny round-trip. Frames >= 19 (the full 2580-token window) are too slow for the
+suite at roughly 30 s/frame on CPU and have not been round-tripped (docs/findings.md 4.4)."""
 import numpy as np
 import pytest
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parents[3]
-ONNX = HERE / "gpt2m" / "gpt2m.onnx"
-TOKENS = HERE / "examples" / "tokens.npy"
+from codec.paths import EXAMPLE_TOKENS as TOKENS, GPT2M_ONNX as ONNX
 
 pytest.importorskip("onnxruntime")
 pytestmark = pytest.mark.skipif(not (ONNX.exists() and TOKENS.exists()),
